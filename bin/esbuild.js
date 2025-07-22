@@ -12,7 +12,7 @@ const esbuild = require('esbuild');
 /** @type BuildOptions */
 const sharedWebOptions = {
 	bundle: true,
-	external: ['vscode'],
+	external: ['vscode', 'vscode-languageclient'],
 	target: 'es2020',
 	platform: 'browser',
 	sourcemap: true,
@@ -29,7 +29,7 @@ const webOptions = {
 /** @type BuildOptions */
 const sharedDesktopOptions = {
 	bundle: true,
-	external: ['vscode'],
+	external: ['vscode', 'vscode-languageclient'],
 	target: 'es2020',
 	platform: 'node',
 	sourcemap: true,

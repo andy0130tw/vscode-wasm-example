@@ -13,7 +13,7 @@
 	"browser": "./dist/web/extension.js",
 	"activationEvents": [],
 	"extensionDependencies": [
-		"ms-vscode.wasm-wasi-core"
+		"agda-web.wasm-wasi-core"
 	],
 	"contributes": {
 		"commands": [
@@ -31,12 +31,13 @@
 		"typescript": "^5.8.3"
 	},
 	"dependencies": {
-		"@vscode/wasm-wasi": "1.0.1"
+		"@vscode/wasm-wasi": "^1.0.1",
+		"@vscode/wasm-wasi-lsp": "^0.1.0-pre.8"
 	},
 	"scripts": {
 		"build": "npm run compile:ts && npm run build:wasi && npm run esbuild",
 		"compile:ts": "tsc -p tsconfig.json",
-		"build:wasi": "zig cc -target wasm32-wasi hello.c -o ./hello.wasm",
+		"build:wasi": "true || zig cc -target wasm32-wasi hello.c -o ./hello.wasm",
 		"esbuild": "node ./bin/esbuild.js"
 	}
 }
