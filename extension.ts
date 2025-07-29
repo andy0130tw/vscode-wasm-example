@@ -3,22 +3,22 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { VSCodeFileSystemDescriptor, Wasm } from '@vscode/wasm-wasi/v1';
+import { MountPointDescriptor, Wasm } from '@vscode/wasm-wasi/v1';
 import { commands, ExtensionContext, Uri, window, workspace } from 'vscode';
 import {
   createStdioOptions,
   createUriConverters,
   startServer,
 } from '@vscode/wasm-wasi-lsp'
-import { LanguageClient, LanguageClientOptions, ServerOptions, RequestType } from 'vscode-languageclient/node';
+import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient';
+import { populateAgdaDataDir } from './data'
 
-const nodeProcess = typeof process !== 'undefined' ? process : null
 const logger = window.createOutputChannel('WASI example')
 
 function eagain(): Error {
   const err: any = new Error("This read to stdin would block");
   err._isWasiError = true;
-  err.errno = 6;
+  err.errno = 6 /* Errno.again */;
   return err;
 }
 
@@ -36,20 +36,37 @@ export async function activate(context: ExtensionContext) {
       const bits = await workspace.fs.readFile(Uri.joinPath(context.extensionUri, 'als.wasm'));
       const module = await WebAssembly.compile(bits);
 
-      const HOME = nodeProcess?.env.HOME ?? '/root'
+      const HOME = '/home/user'
+      const Agda_datadir = `/opt/agda`
+
+      // const pty = wasm.createPseudoterminal()
+      // const term = window.createTerminal({name: 'hello', pty})
+
+      // const proc = await wasm.createProcess('hello', module, {
+      //   stdio: pty.stdio,
+      //   mountPoints: [{kind: 'workspaceFolder'}],
+      //   trace: true,
+      // })
+      // await proc.run()
+      // return
 
       const serverOptions: ServerOptions = async () => {
-        const fs: VSCodeFileSystemDescriptor = {
-          kind: 'vscodeFileSystem',
-          // the host path to mount
-          uri: Uri.file(HOME),
-          mountPoint: HOME,
-        }
+
+        const memfsHome = await wasm.createMemoryFileSystem()
+        const memfsAgdaDataDir = await wasm.createMemoryFileSystem()
+
+        populateAgdaDataDir(memfsAgdaDataDir)
+
+        const mountPoints: MountPointDescriptor[] = [
+          { kind: 'workspaceFolder' },
+          { kind: 'memoryFileSystem', fileSystem: memfsHome, mountPoint: HOME },
+          { kind: 'memoryFileSystem', fileSystem: memfsAgdaDataDir, mountPoint: Agda_datadir },
+        ]
 
         const stdinPipe = wasm.createWritable()
         const origRead = (stdinPipe as any).read.bind(stdinPipe)
         ;(stdinPipe as any).read = function(mode?: 'max', size?: number) {
-          logger.appendLine(`STDIN READ mode=${mode} size=${size} chunks=${this.chunks}`)
+          // logger.appendLine(`STDIN READ mode=${mode} size=${size} chunks=${this.chunks}`)
           if (this.fillLevel == 0) {
             throw eagain();
           }
@@ -57,26 +74,28 @@ export async function activate(context: ExtensionContext) {
         }
         const origWrite = (stdinPipe as any).write.bind(stdinPipe)
         stdinPipe.write = function(chunk: any, encoding?: 'utf-8') {
-          logger.appendLine(`STDIN WRITE chunk=${chunk} encoding=${encoding}`)
+          // logger.appendLine(`STDIN WRITE chunk=${chunk} encoding=${encoding}`)
           return origWrite(chunk, encoding)
         }
 
         // Create a WASM process.
         const process = await wasm.createProcess('hello', module, {
-          initial: 1024,
+          initial: 256,
           maximum: 1024,
           shared: true,
         }, {
+          env: {
+            HOME,
+            Agda_datadir,
+          },
           stdio: {...createStdioOptions(), in: { kind: 'pipeIn', pipe: stdinPipe } },
-          mountPoints: [fs],
+          args: ['+RTS', '-V1', '-RTS', '+AGDA', '-WnoDuplicateInterfaceFiles', '-AGDA'],
+          mountPoints,
           // trace: true,
         });
 
         // Hook stderr to the output channel
         const decoder = new TextDecoder('utf-8');
-        process.stdout!.onData((data) => {
-          logger.append('[STDOUT ' + decoder.decode(data) + ']\n');
-        });
         process.stderr!.onData(data => {
           logger.append(decoder.decode(data));
         });
@@ -88,12 +107,6 @@ export async function activate(context: ExtensionContext) {
         documentSelector: [{ language: 'plaintext' }],
         outputChannel: logger,
         uriConverters: createUriConverters(),
-        middleware: {
-          provideHover(d, p, t, n) {
-            logger.appendLine('PROVIDE HOVER! ' + JSON.stringify(p));
-            return n(d, p, t)
-          }
-        }
       };
 
       const client = new LanguageClient('als', 'Agda Language Server', serverOptions, clientOptions)
@@ -101,8 +114,32 @@ export async function activate(context: ExtensionContext) {
 
       context.subscriptions.push(client);
 
+      client.onRequest('agda', (res, opts) => {
+        logger.appendLine(`NOTI AGDA: ${JSON.stringify(res, null, 2)}`)
+      })
+
+      function mkreq(str: string) {
+        const ss = JSON.stringify(str)
+        return client.sendRequest('agda', {
+          tag: 'CmdReq',
+          contents: `IOTCM ${ss} None Indirect (Cmd_load ${ss} [])`,
+        })
+      }
+
+      setTimeout(async () => {
+        const xx = [
+          '/workspace/src/Data/Empty.agda',
+          '/workspace/src/Data/Bool.agda',
+        ]
+        for (let i = 0; i < xx.length; i++) {
+          const resp = await mkreq(xx[i]);
+          logger.appendLine(`resp = ${JSON.stringify(resp)}`)
+          await new Promise(r => setTimeout(r, 3000))
+        }
+      }, 3000)
+
       await client.start()
-      logger.appendLine('Server has shutdown')
+      logger.appendLine('Server has started')
     } catch (error) {
       // Show an error message if something goes wrong.
       void window.showErrorMessage(error.message);

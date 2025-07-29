@@ -13,28 +13,64 @@ int main(void)
     }
     printf("initial cwd is: %s\n", cwd);
 
-    // vscode WASI does not follow this convention?
     char* ref = getenv("PWD");
     if (ref != NULL && strcmp(cwd, "/") == 0) {
-      printf("changing wd to: %s\n", ref);
-      if (chdir(ref) < 0) {
+      printf("Found PWD from env; changing wd to: %s\n", ref);
+      /*if (chdir(ref) < 0) {
         perror("chdir");
         return 1;
-      }
+      }*/
     }
 
-    char buf[1024];
-    while (scanf("%1023s", buf) > 0) {
-      printf("your input is [%s]\n", buf);
+    // char buf[1024];
+    // while (scanf("%1023s", buf) > 0) {
+    //   printf("your input is [%s]\n", buf);
+    // }
+
+    for (__wasi_fd_t fd = 3; fd != 0; fd++) {
+      __wasi_prestat_t prestat;
+      __wasi_errno_t ret = __wasi_fd_prestat_get(fd, &prestat);
+
+      printf("probing preopen fd=%d (ret=%d)...\n", fd, ret);
+
+      if (ret == __WASI_ERRNO_BADF) break;
+      if (ret != __WASI_ERRNO_SUCCESS) {
+        printf("__wasi_fd_prestat_get: %d\n", ret);
+        exit(1);
+      }
+
+      if (prestat.tag != __WASI_PREOPENTYPE_DIR) {
+        continue;
+      }
+
+      size_t namelen = prestat.u.dir.pr_name_len;
+      char buf[namelen + 1];
+      ret = __wasi_fd_prestat_dir_name(fd, (uint8_t*) buf, prestat.u.dir.pr_name_len);
+      if (ret == __WASI_ERRNO_BADF) break;
+      if (ret != __WASI_ERRNO_SUCCESS) {
+        printf("__wasi_fd_prestat_dir_name: %d\n", ret);
+        exit(1);
+      }
+      buf[namelen] = '\0';
+
+      printf("preopen fd=%d: %s\n", fd, buf);
     }
+
+    char* resolved = realpath("/workspace/src/../src", NULL);
+    if (resolved == NULL) {
+      perror("realpath");
+      return 1;
+    }
+    printf("realpath -> %s\n", resolved);
+    free(resolved);
 
     struct dirent *entry;
     DIR *dp;
 
     // Open the current directory
-    dp = opendir(".");
+    dp = opendir("/workspace/src");
     if (dp == NULL) {
-        perror("opendir");
+        perror("opendir(\".\")");
         return 1;
     }
 
