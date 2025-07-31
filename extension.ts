@@ -14,6 +14,7 @@ import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-lan
 import { populateAgdaDataDir } from './data'
 
 const logger = window.createOutputChannel('WASI example')
+const logger2 = window.createOutputChannel('LSP trace', { log: true })
 
 function eagain(): Error {
   const err: any = new Error("This read to stdin would block");
@@ -37,14 +38,18 @@ export async function activate(context: ExtensionContext) {
       const module = await WebAssembly.compile(bits);
 
       const HOME = '/home/user'
-      const Agda_datadir = `/opt/agda`
+      const Agda_datadir = '/opt/agda'
 
       // const pty = wasm.createPseudoterminal()
       // const term = window.createTerminal({name: 'hello', pty})
+      // term.show()
 
       // const proc = await wasm.createProcess('hello', module, {
       //   stdio: pty.stdio,
-      //   mountPoints: [{kind: 'workspaceFolder'}],
+      //   mountPoints: [
+      //     { kind: 'workspaceFolder' },
+      //     { kind: 'vscodeFileSystem', uri: Uri.parse('untitled:/'), mountPoint: '/tmp' },
+      //   ],
       //   trace: true,
       // })
       // await proc.run()
@@ -52,6 +57,7 @@ export async function activate(context: ExtensionContext) {
 
       const serverOptions: ServerOptions = async () => {
 
+        const memfsTempDir = await wasm.createMemoryFileSystem()
         const memfsHome = await wasm.createMemoryFileSystem()
         const memfsAgdaDataDir = await wasm.createMemoryFileSystem()
 
@@ -59,6 +65,7 @@ export async function activate(context: ExtensionContext) {
 
         const mountPoints: MountPointDescriptor[] = [
           { kind: 'workspaceFolder' },
+          { kind: 'memoryFileSystem', fileSystem: memfsTempDir, mountPoint: '/tmp' },
           { kind: 'memoryFileSystem', fileSystem: memfsHome, mountPoint: HOME },
           { kind: 'memoryFileSystem', fileSystem: memfsAgdaDataDir, mountPoint: Agda_datadir },
         ]
@@ -89,7 +96,10 @@ export async function activate(context: ExtensionContext) {
             Agda_datadir,
           },
           stdio: {...createStdioOptions(), in: { kind: 'pipeIn', pipe: stdinPipe } },
-          args: ['+RTS', '-V1', '-RTS', '+AGDA', '-WnoDuplicateInterfaceFiles', '-AGDA'],
+          args: [
+            '+RTS', '-V1', '-RTS',
+            // workaround (but to hide it) for the path issue which I haven't dig into
+            '+AGDA', '-WnoDuplicateInterfaceFiles', '-AGDA'],
           mountPoints,
           // trace: true,
         });
@@ -106,6 +116,7 @@ export async function activate(context: ExtensionContext) {
       const clientOptions: LanguageClientOptions = {
         documentSelector: [{ language: 'plaintext' }],
         outputChannel: logger,
+        traceOutputChannel: logger2,
         uriConverters: createUriConverters(),
       };
 
@@ -115,7 +126,7 @@ export async function activate(context: ExtensionContext) {
       context.subscriptions.push(client);
 
       client.onRequest('agda', (res, opts) => {
-        logger.appendLine(`NOTI AGDA: ${JSON.stringify(res, null, 2)}`)
+        logger.appendLine(`FROM AGDA: ${JSON.stringify(res, null, 2)}`)
       })
 
       function mkreq(str: string) {
@@ -127,12 +138,12 @@ export async function activate(context: ExtensionContext) {
       }
 
       setTimeout(async () => {
-        const xx = [
-          '/workspace/src/Data/Empty.agda',
+        const files = [
           '/workspace/src/Data/Bool.agda',
         ]
-        for (let i = 0; i < xx.length; i++) {
-          const resp = await mkreq(xx[i]);
+        for (let i = 0; i < files.length; i++) {
+          logger.appendLine('-'.repeat(20) + ` TYPECHECKING ${files[i]} ` + '-'.repeat(20))
+          const resp = await mkreq(files[i]);
           logger.appendLine(`resp = ${JSON.stringify(resp)}`)
           await new Promise(r => setTimeout(r, 3000))
         }
