@@ -3,7 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { MountPointDescriptor, Wasm } from '@vscode/wasm-wasi/v1';
+import type { MountPointDescriptor, ProcessOptions, Wasm } from '@vscode/wasm-wasi/v1';
+
+import * as WasmWasiCore from '@agda-web/wasm-wasi-core';
+
 import { commands, ExtensionContext, Uri, window, workspace } from 'vscode';
 import {
   createStdioOptions,
@@ -16,30 +19,116 @@ import { populateAgdaDataDir } from './data'
 const logger = window.createOutputChannel('WASI example')
 const logger2 = window.createOutputChannel('LSP trace', { log: true })
 
-function eagain(): Error {
-  const err: any = new Error("This read to stdin would block");
-  err._isWasiError = true;
-  err.errno = 6 /* Errno.again */;
-  return err;
-}
-
 export async function activate(context: ExtensionContext) {
+  const coreDir = 'vscode-wasm/wasm-wasi-core'
+  const corePkgJSONRaw = await workspace.fs.readFile(Uri.joinPath(context.extensionUri, coreDir, 'package.json'))
+  const corePkgJSON = JSON.parse(new TextDecoder().decode(corePkgJSONRaw)) as { version: string }
 
-  // Load the WASM API
-  const wasm: Wasm = await Wasm.load();
+  const WasmAPILoader = await WasmWasiCore.activate({
+    extensionUri: Uri.joinPath(context.extensionUri, coreDir),
+    extension: {
+      packageJSON: {
+        version: corePkgJSON.version,
+      }
+    }
+  })
+
+  const alsWasmRaw = await workspace.fs.readFile(Uri.joinPath(context.extensionUri, 'als.wasm'));
+  const alsModule = await WebAssembly.compile(alsWasmRaw);
+
+  class AgdaLanguageServerFactory {
+    static HOME = '/home/user'
+    static Agda_datadir = '/opt/agda'
+
+    constructor(readonly wasm: Wasm, readonly module: WebAssembly.Module) {}
+
+    private static eagain(): Error {
+      const err: any = new Error("This read to stdin would block");
+      err._isWasiError = true;
+      err.errno = 6 /* Errno.again */;
+      return err;
+    }
+
+    async createServer(processOptions: Partial<ProcessOptions> = {}) {
+      const memfsTempDir = await this.wasm.createMemoryFileSystem()
+      const memfsHome = await this.wasm.createMemoryFileSystem()
+      const memfsAgdaDataDir = await this.wasm.createMemoryFileSystem()
+
+      populateAgdaDataDir(memfsAgdaDataDir)
+
+      const { HOME, Agda_datadir } = AgdaLanguageServerFactory
+
+      const mountPoints: MountPointDescriptor[] = [
+        { kind: 'workspaceFolder' },
+        { kind: 'memoryFileSystem', fileSystem: memfsTempDir, mountPoint: '/tmp' },
+        { kind: 'memoryFileSystem', fileSystem: memfsHome, mountPoint: HOME },
+        { kind: 'memoryFileSystem', fileSystem: memfsAgdaDataDir, mountPoint: Agda_datadir },
+      ]
+
+      // patch the stdin pipe
+      const stdio = createStdioOptions()
+      const stdinPipe = this.wasm.createWritable()
+      const origRead = (stdinPipe as any).read.bind(stdinPipe)
+      ;(stdinPipe as any).read = function(mode?: 'max', size?: number) {
+        // logger.appendLine(`STDIN READ mode=${mode} size=${size} chunks=${this.chunks}`)
+        if (this.fillLevel == 0) {
+          throw AgdaLanguageServerFactory.eagain();
+        }
+        return origRead(mode, size)
+      }
+      stdio.in = { kind: 'pipeIn', pipe: stdinPipe }
+
+      const process = await this.wasm.createProcess('als', this.module, {
+        initial: 256,
+        maximum: 1024,
+        shared: true,
+      }, {
+        env: {
+          HOME,
+          Agda_datadir,
+        },
+        stdio,
+        args: [
+          '+RTS', '-V1', '-RTS',
+          // workaround (but to hide it) for the path issue which I haven't dig into
+          '+AGDA', '-WnoDuplicateInterfaceFiles', '-AGDA'],
+        mountPoints,
+        trace: true,
+        ...processOptions,
+      });
+
+      return startServer(process);
+    }
+
+    private async queryOutput(args: string[]) {
+      const process = await this.wasm.createProcess('als', this.module, {
+        args,
+        stdio: { out: { kind: 'pipeOut' } },
+      })
+
+      let result = ''
+      const decoder = new TextDecoder()
+      process.stdout.onData(data => {
+        result += decoder.decode(data, { stream: true })
+      })
+      await process.run()
+      return (result + decoder.decode()).trimEnd()
+    }
+
+    async queryVersionString() {
+      return this.queryOutput(['--version'])
+    }
+  }
 
   // Register a command that runs the C example
   commands.registerCommand('wasm-wasi-c-example.run', async () => {
     // Load the WASM module. It is stored alongside the extension JS code.
     // So we can use VS Code's file system API to load it. Makes it
     // independent of whether the code runs in the desktop or the web.
+
+    const wasm = WasmAPILoader.load();
+
     try {
-      const bits = await workspace.fs.readFile(Uri.joinPath(context.extensionUri, 'als.wasm'));
-      const module = await WebAssembly.compile(bits);
-
-      const HOME = '/home/user'
-      const Agda_datadir = '/opt/agda'
-
       // const pty = wasm.createPseudoterminal()
       // const term = window.createTerminal({name: 'hello', pty})
       // term.show()
@@ -55,63 +144,10 @@ export async function activate(context: ExtensionContext) {
       // await proc.run()
       // return
 
-      const serverOptions: ServerOptions = async () => {
+      const factory = new AgdaLanguageServerFactory(wasm, alsModule)
+      logger.appendLine(await factory.queryVersionString())
 
-        const memfsTempDir = await wasm.createMemoryFileSystem()
-        const memfsHome = await wasm.createMemoryFileSystem()
-        const memfsAgdaDataDir = await wasm.createMemoryFileSystem()
-
-        populateAgdaDataDir(memfsAgdaDataDir)
-
-        const mountPoints: MountPointDescriptor[] = [
-          { kind: 'workspaceFolder' },
-          { kind: 'memoryFileSystem', fileSystem: memfsTempDir, mountPoint: '/tmp' },
-          { kind: 'memoryFileSystem', fileSystem: memfsHome, mountPoint: HOME },
-          { kind: 'memoryFileSystem', fileSystem: memfsAgdaDataDir, mountPoint: Agda_datadir },
-        ]
-
-        const stdinPipe = wasm.createWritable()
-        const origRead = (stdinPipe as any).read.bind(stdinPipe)
-        ;(stdinPipe as any).read = function(mode?: 'max', size?: number) {
-          // logger.appendLine(`STDIN READ mode=${mode} size=${size} chunks=${this.chunks}`)
-          if (this.fillLevel == 0) {
-            throw eagain();
-          }
-          return origRead(mode, size)
-        }
-        const origWrite = (stdinPipe as any).write.bind(stdinPipe)
-        stdinPipe.write = function(chunk: any, encoding?: 'utf-8') {
-          // logger.appendLine(`STDIN WRITE chunk=${chunk} encoding=${encoding}`)
-          return origWrite(chunk, encoding)
-        }
-
-        // Create a WASM process.
-        const process = await wasm.createProcess('hello', module, {
-          initial: 256,
-          maximum: 1024,
-          shared: true,
-        }, {
-          env: {
-            HOME,
-            Agda_datadir,
-          },
-          stdio: {...createStdioOptions(), in: { kind: 'pipeIn', pipe: stdinPipe } },
-          args: [
-            '+RTS', '-V1', '-RTS',
-            // workaround (but to hide it) for the path issue which I haven't dig into
-            '+AGDA', '-WnoDuplicateInterfaceFiles', '-AGDA'],
-          mountPoints,
-          // trace: true,
-        });
-
-        // Hook stderr to the output channel
-        const decoder = new TextDecoder('utf-8');
-        process.stderr!.onData(data => {
-          logger.append(decoder.decode(data));
-        });
-
-        return startServer(process);
-      }
+      const transports = () => factory.createServer()
 
       const clientOptions: LanguageClientOptions = {
         documentSelector: [{ language: 'plaintext' }],
@@ -120,7 +156,7 @@ export async function activate(context: ExtensionContext) {
         uriConverters: createUriConverters(),
       };
 
-      const client = new LanguageClient('als', 'Agda Language Server', serverOptions, clientOptions)
+      const client = new LanguageClient('als', 'Agda Language Server', transports, clientOptions)
       client.registerProposedFeatures()
 
       context.subscriptions.push(client);
@@ -156,6 +192,10 @@ export async function activate(context: ExtensionContext) {
       void window.showErrorMessage(error.message);
     }
   });
+
+  return {
+    AgdaLanguageServerFactory,
+  }
 }
 
 export function deactivate() {

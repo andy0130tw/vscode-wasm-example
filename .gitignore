@@ -2,3 +2,4 @@ node_modules/
 /dist
 /hello.wasm
 /*.js
+/.vscode-test-web/

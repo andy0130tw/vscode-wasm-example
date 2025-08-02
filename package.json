@@ -1,7 +1,7 @@
 {
 	"name": "wasm-wasi-c-example",
 	"private": "true",
-	"publisher": "vscode-samples",
+	"publisher": "qbane",
 	"version": "0.1.0",
 	"description": "C Example",
 	"author": "MS",
@@ -17,7 +17,10 @@
 	],
 	"files": [
 		"als.wasm",
-		"dist/"
+		"dist/",
+		"vscode-wasm/wasm-wasi-core/package.json",
+		"vscode-wasm/wasm-wasi-core/dist/*/mainWorker.js*",
+		"vscode-wasm/wasm-wasi-core/dist/*/threadWorker.js*"
 	],
 	"contributes": {
 		"commands": [
@@ -30,11 +33,12 @@
 	},
 	"devDependencies": {
 		"@types/node": "^22.15.30",
-		"@types/vscode": "1.100.0",
+		"@types/vscode": "^1.77.0",
 		"esbuild": "^0.25.5",
 		"typescript": "^5.8.3"
 	},
 	"dependencies": {
+		"@agda-web/wasm-wasi-core": "file:vscode-wasm/wasm-wasi-core",
 		"@vscode/wasm-wasi": "^1.0.1",
 		"@vscode/wasm-wasi-lsp": "^0.1.0-pre.8",
 		"vscode-languageclient": "^10.0.0-next.12"
@@ -43,6 +47,7 @@
 		"build": "npm run compile:ts && npm run build:wasi && npm run esbuild",
 		"compile:ts": "tsc -p tsconfig.json",
 		"build:wasi": "zig cc -target wasm32-wasi hello.c -o ./hello.wasm",
+        "build:core": "cd vscode-wasm/wasm-wasi-core && npm i && npm run build && npm run esbuild && cd ../..",
 		"esbuild": "node ./bin/esbuild.js"
 	}
 }
