@@ -7,17 +7,17 @@ import type { MountPointDescriptor, ProcessOptions, Wasm } from '@vscode/wasm-wa
 
 import * as WasmWasiCore from '@agda-web/wasm-wasi-core';
 
-import { commands, ExtensionContext, Uri, window, workspace } from 'vscode';
 import {
   createStdioOptions,
   createUriConverters,
   startServer,
-} from '@vscode/wasm-wasi-lsp'
-import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient';
-import { populateAgdaDataDir } from './data'
+} from '@vscode/wasm-wasi-lsp';
+import { commands, ExtensionContext, LogOutputChannel, OutputChannel, Uri, window, workspace } from 'vscode';
+import { LanguageClient, LanguageClientOptions } from 'vscode-languageclient';
+import { populateAgdaDataDir } from './data';
 
-const logger = window.createOutputChannel('WASI example')
-const logger2 = window.createOutputChannel('LSP trace', { log: true })
+let logger: OutputChannel
+let traceLogger: LogOutputChannel
 
 export async function activate(context: ExtensionContext) {
   const coreDir = 'vscode-wasm/wasm-wasi-core'
@@ -33,8 +33,7 @@ export async function activate(context: ExtensionContext) {
     }
   })
 
-  const alsWasmRaw = await workspace.fs.readFile(Uri.joinPath(context.extensionUri, 'als.wasm'));
-  const alsModule = await WebAssembly.compile(alsWasmRaw);
+  let alsModule = null
 
   class AgdaLanguageServerFactory {
     static HOME = '/home/user'
@@ -120,6 +119,11 @@ export async function activate(context: ExtensionContext) {
     }
   }
 
+  async function loadBuiltInALSModule() {
+    const alsWasmRaw = await workspace.fs.readFile(Uri.joinPath(context.extensionUri, 'als.wasm'));
+    return WebAssembly.compile(alsWasmRaw)
+  }
+
   // Register a command that runs the C example
   commands.registerCommand('wasm-wasi-c-example.run', async () => {
     // Load the WASM module. It is stored alongside the extension JS code.
@@ -127,6 +131,9 @@ export async function activate(context: ExtensionContext) {
     // independent of whether the code runs in the desktop or the web.
 
     const wasm = WasmAPILoader.load();
+    if (alsModule == null) {
+      alsModule = await loadBuiltInALSModule();
+    }
 
     try {
       // const pty = wasm.createPseudoterminal()
@@ -144,6 +151,11 @@ export async function activate(context: ExtensionContext) {
       // await proc.run()
       // return
 
+      if (logger == null) {
+        logger = window.createOutputChannel('WASI example')
+        traceLogger = window.createOutputChannel('LSP trace', { log: true })
+      }
+
       const factory = new AgdaLanguageServerFactory(wasm, alsModule)
       logger.appendLine(await factory.queryVersionString())
 
@@ -152,7 +164,7 @@ export async function activate(context: ExtensionContext) {
       const clientOptions: LanguageClientOptions = {
         documentSelector: [{ language: 'plaintext' }],
         outputChannel: logger,
-        traceOutputChannel: logger2,
+        traceOutputChannel: traceLogger,
         uriConverters: createUriConverters(),
       };
 
@@ -195,6 +207,9 @@ export async function activate(context: ExtensionContext) {
 
   return {
     AgdaLanguageServerFactory,
+    WasmAPILoader,
+    loadBuiltInALSModule,
+    createUriConverters,
   }
 }
 

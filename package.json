@@ -44,7 +44,7 @@
 		"build": "npm run compile:ts && npm run build:wasi && npm run esbuild",
 		"compile:ts": "tsc -p tsconfig.json",
 		"build:wasi": "zig cc -target wasm32-wasi hello.c -o ./hello.wasm",
-        "build:core": "cd vscode-wasm/wasm-wasi-core && npm i && npm run build && npm run esbuild && cd ../..",
+		"build:core": "./build-core.sh",
 		"esbuild": "node ./bin/esbuild.js"
 	}
 }
