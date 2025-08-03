@@ -9,6 +9,7 @@
 	},
 	"include": [
 		"extension.ts",
+		"ambient.d.ts",
 		"types.d.ts"
 	]
 }

@@ -1,17 +1,22 @@
-declare module '@agda-web/wasm-wasi-core' {
-  import type { Uri } from 'vscode'
-  import { Wasm } from '@vscode/wasm-wasi/v1'
+import { Wasm } from '@vscode/wasm-wasi/v1'
+import { Uri } from 'vscode'
 
-  interface APILoader {
-    load: () => Wasm
-  }
+export interface APILoader {
+  load: () => Wasm
+}
 
-  export const activate: (context: {
-    extensionUri: Uri,
-    extension: {
-      packageJSON: {
-        version: string
-      }
-    }
-  }) => Promise<APILoader>
+type URIConverters = {
+  code2Protocol: (value: Uri) => string,
+  protocol2Code: (value: string) => Uri,
+}
+
+declare class AgdaLanguageServerFactory {
+  constructor (wasm: Wasm, module: WebAssembly.Module)
+}
+
+declare interface WasiExample {
+  AgdaLanguageServerFactory: AgdaLanguageServerFactory
+  WasmAPILoader: APILoader
+  loadBuiltInALSModule: () => Promise<WebAssembly.Module>
+  createUriConverters: () => URIConverters
 }
