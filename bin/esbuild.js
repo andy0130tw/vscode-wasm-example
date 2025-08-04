@@ -16,9 +16,6 @@ const sharedWebOptions = {
 	target: 'es2020',
 	platform: 'browser',
 	sourcemap: true,
-	alias: {
-		'vscode-languageclient': 'vscode-languageclient/browser',
-	},
 };
 
 /** @type BuildOptions */
@@ -36,9 +33,6 @@ const sharedDesktopOptions = {
 	target: 'es2020',
 	platform: 'node',
 	sourcemap: true,
-	alias: {
-		'vscode-languageclient': 'vscode-languageclient/node',
-	},
 };
 
 /** @type BuildOptions */

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <errno.h>
 
 int main(void)
 {
@@ -56,7 +57,7 @@ int main(void)
       printf("preopen fd=%d: %s\n", fd, buf);
     }
 
-    char* resolved = realpath("/workspace/src/../src", NULL);
+    char* resolved = realpath("/home/qbane/agda-stdlib-2.0/LICENCE", NULL);
     if (resolved == NULL) {
       perror("realpath");
       return 1;
@@ -68,7 +69,7 @@ int main(void)
     DIR *dp;
 
     // Open the current directory
-    dp = opendir("/workspace/src");
+    dp = opendir("/");
     if (dp == NULL) {
         perror("opendir(\".\")");
         return 1;

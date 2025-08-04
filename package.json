@@ -1,34 +1,26 @@
 {
-	"name": "wasm-wasi-c-example",
+	"name": "als-wasm-loader",
 	"private": "true",
-	"publisher": "qbane",
 	"version": "0.1.0",
-	"description": "C Example",
-	"author": "MS",
-	"license": "MIT",
+	"publisher": "agda-web",
 	"engines": {
 		"vscode": "^1.77.0"
 	},
+	"license": "MIT",
+	"repository": "https://github.com/andy0130tw/als-wasm-vscode",
+	"displayName": "Agda Language Server WASM Loader",
+	"description": "WebAssembly loader and runtime for Agda Language Server",
 	"main": "./dist/desktop/extension.js",
 	"browser": "./dist/web/extension.js",
-	"types": "./types.d.ts",
 	"activationEvents": [],
+	"types": "./types.d.ts",
 	"files": [
-		"als.wasm",
+		"LICENSE",
 		"dist/",
 		"vscode-wasm/wasm-wasi-core/package.json",
-		"vscode-wasm/wasm-wasi-core/dist/*/mainWorker.js*",
-		"vscode-wasm/wasm-wasi-core/dist/*/threadWorker.js*"
+		"vscode-wasm/wasm-wasi-core/dist/{desktop,web}/mainWorker.js*",
+		"vscode-wasm/wasm-wasi-core/dist/{desktop,web}/threadWorker.js*"
 	],
-	"contributes": {
-		"commands": [
-			{
-				"command": "wasm-wasi-c-example.run",
-				"category": "WASM Example",
-				"title": "Activate Agda Language Server"
-			}
-		]
-	},
 	"devDependencies": {
 		"@types/node": "^22.15.30",
 		"@types/vscode": "^1.77.0",
@@ -37,15 +29,13 @@
 	},
 	"dependencies": {
 		"@agda-web/wasm-wasi-core": "file:vscode-wasm/wasm-wasi-core",
-		"@vscode/wasm-wasi": "^1.0.1",
-		"@vscode/wasm-wasi-lsp": "^0.1.0-pre.8",
-		"vscode-languageclient": "^10.0.0-next.12"
+		"@agda-web/wasm-wasi-lsp": "file:vscode-wasm/wasm-wasi-lsp",
+		"@vscode/wasm-wasi": "^1.0.1"
 	},
 	"scripts": {
-		"build": "npm run compile:ts && npm run build:wasi && npm run esbuild",
-		"compile:ts": "tsc -p tsconfig.json",
-		"build:wasi": "zig cc -target wasm32-wasi hello.c -o ./hello.wasm",
 		"build:core": "./build-core.sh",
+		"build": "npm run compile && npm run esbuild",
+		"compile": "tsc -p tsconfig.json",
 		"esbuild": "node ./bin/esbuild.js"
 	}
 }

@@ -14,9 +14,9 @@ declare class AgdaLanguageServerFactory {
   constructor (wasm: Wasm, module: WebAssembly.Module)
 }
 
-declare interface WasiExample {
+declare interface ALSWasmLoaderExports {
   AgdaLanguageServerFactory: AgdaLanguageServerFactory
   WasmAPILoader: APILoader
-  loadBuiltInALSModule: () => Promise<WebAssembly.Module>
+  // to be used in the `uriConverters` property of client options
   createUriConverters: () => URIConverters
 }
