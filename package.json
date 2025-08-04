@@ -4,7 +4,7 @@
 	"version": "0.1.0",
 	"publisher": "agda-web",
 	"engines": {
-		"vscode": "^1.77.0"
+		"vscode": "^1.89.0"
 	},
 	"license": "MIT",
 	"repository": "https://github.com/andy0130tw/als-wasm-vscode",
@@ -23,7 +23,7 @@
 	],
 	"devDependencies": {
 		"@types/node": "^22.15.30",
-		"@types/vscode": "^1.77.0",
+		"@types/vscode": "1.89.0",
 		"esbuild": "^0.25.5",
 		"typescript": "^5.8.3"
 	},
