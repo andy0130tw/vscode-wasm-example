@@ -2,12 +2,12 @@
 	"name": "als-wasm-loader",
 	"private": "true",
 	"version": "0.1.0",
-	"publisher": "agda-web",
+	"publisher": "qbane",
 	"engines": {
 		"vscode": "^1.89.0"
 	},
 	"license": "MIT",
-	"repository": "https://github.com/andy0130tw/als-wasm-vscode",
+	"repository": "https://github.com/qbane/vscode-als-wasm-loader",
 	"displayName": "Agda Language Server WASM Loader",
 	"description": "WebAssembly loader and runtime for Agda Language Server",
 	"main": "./dist/desktop/extension.js",
